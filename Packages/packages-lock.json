@@ -91,16 +91,6 @@
       "dependencies": {},
       "url": "https://packages.unity.com"
     },
-    "com.unity.terrain-tools": {
-      "version": "5.2.1",
-      "depth": 0,
-      "source": "registry",
-      "dependencies": {
-        "com.unity.modules.terrain": "1.0.0",
-        "com.unity.modules.terrainphysics": "1.0.0"
-      },
-      "url": "https://packages.unity.com"
-    },
     "com.unity.test-framework": {
       "version": "1.5.1",
       "depth": 1,
@@ -143,7 +133,7 @@
       }
     },
     "com.unity.visualscripting": {
-      "version": "1.9.8",
+      "version": "1.9.7",
       "depth": 0,
       "source": "registry",
       "dependencies": {
