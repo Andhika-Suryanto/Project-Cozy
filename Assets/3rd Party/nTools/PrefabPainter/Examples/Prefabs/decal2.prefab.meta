@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 695911234f6b6574ea539949a6b1ff38
+timeCreated: 1493295752
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 61331
+  packageName: Prefab Painter 2
+  packageVersion: 2.8
+  assetPath: Assets/nTools/PrefabPainter/Examples/Prefabs/decal2.prefab
+  uploadId: 653896

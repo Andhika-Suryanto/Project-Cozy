@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 93e3662b725d7294fa9c4512d6b5114a
+timeCreated: 1578654397
+licenseType: Store
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 61331
+  packageName: Prefab Painter 2
+  packageVersion: 2.8
+  assetPath: Assets/nTools/PrefabPainter/Presets/Tree.json
+  uploadId: 653896

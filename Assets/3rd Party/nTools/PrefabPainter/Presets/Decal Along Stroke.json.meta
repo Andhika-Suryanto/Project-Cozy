@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 7fc3feb721f1a794ca5591920c386d82
+timeCreated: 1578654722
+licenseType: Store
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 61331
+  packageName: Prefab Painter 2
+  packageVersion: 2.8
+  assetPath: Assets/nTools/PrefabPainter/Presets/Decal Along Stroke.json
+  uploadId: 653896

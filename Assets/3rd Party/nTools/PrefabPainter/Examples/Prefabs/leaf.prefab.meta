@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 9d7aba64600f69e43bc71396ad5e9de0
+timeCreated: 1493295576
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 61331
+  packageName: Prefab Painter 2
+  packageVersion: 2.8
+  assetPath: Assets/nTools/PrefabPainter/Examples/Prefabs/leaf.prefab
+  uploadId: 653896
