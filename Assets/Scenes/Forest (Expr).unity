@@ -553,6 +553,10 @@ PrefabInstance:
       propertyPath: m_ShowCustomSorter
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 368511592, guid: 5e9e851c0e142814dac026a256ba2ac0, type: 3}
+      propertyPath: volumeLayer.m_Bits
+      value: 4096
+      objectReference: {fileID: 0}
     - target: {fileID: 368511593, guid: 5e9e851c0e142814dac026a256ba2ac0, type: 3}
       propertyPath: m_Enabled
       value: 1
@@ -607,6 +611,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2052556826}
   - component: {fileID: 2052556825}
+  - component: {fileID: 2052556827}
   m_Layer: 0
   m_Name: PrefabPainterSceneSettings
   m_TagString: Untagged
@@ -642,6 +647,19 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2052556827
+MonoBehaviour:
+  m_ObjectHideFlags: 19
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2052556824}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c2b433270393ce24ab45d6ea80173a65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  parentForPrefabs: {fileID: 0}
 --- !u!1 &2107901408
 GameObject:
   m_ObjectHideFlags: 0
@@ -1248,7 +1266,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7450394172695349028}
   - component: {fileID: 7450394172695349031}
-  m_Layer: 10
+  m_Layer: 12
   m_Name: IL3DN_Post-Processing
   m_TagString: Untagged
   m_Icon: {fileID: 0}
