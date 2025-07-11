@@ -179,13 +179,13 @@ MonoBehaviour:
     value: 1
   _Density:
     overrideState: 1
-    value: 15
+    value: 10
   _NearColor:
     overrideState: 1
     value: {r: 0.5019608, g: 0.26666668, b: 0.16862746, a: 0}
   _FarColor:
     overrideState: 1
-    value: {r: 0.49411765, g: 0.6745098, b: 0.9254902, a: 0.4117647}
+    value: {r: 0, g: 0.79318064, b: 0.81960785, a: 0.49803922}
   _GlowColor:
     overrideState: 1
     value: {r: 0.39607844, g: 0.2, b: 0.07058824, a: 0}
