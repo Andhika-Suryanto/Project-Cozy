@@ -138,56 +138,95 @@ public class GameSaveManager : MonoBehaviour
     #endregion
     
     #region Game Save Management
-    public void SaveGameData(GameSaveData saveData)
+   public void SaveGameData(GameSaveData saveData)
+{
+    // Use character name and character index for consistent save file naming
+    string baseFileName = $"{SanitizeFileName(currentPlayer.playerName)}_Char{currentPlayer.selectedCharacterIndex}";
+    string fileName = $"{baseFileName}.save";
+    string path = Path.Combine(Application.persistentDataPath, "SaveGames", fileName);
+    
+    // Add character info to save data
+    saveData.playerName = currentPlayer.playerName;
+    saveData.characterIndex = currentPlayer.selectedCharacterIndex;
+    saveData.characterCardName = currentPlayer.characterCardName;
+    
+    // Create directory if it doesn't exist
+    Directory.CreateDirectory(Path.GetDirectoryName(path));
+    
+    // Check if save file already exists
+    bool isOverwriting = File.Exists(path);
+    
+    // Always update save date to current time
+    saveData.saveDate = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+    
+    string json = JsonUtility.ToJson(saveData, true);
+    File.WriteAllText(path, json);
+    
+    if (isOverwriting)
     {
-        // Use character name and timestamp for save file
-        string timestamp = System.DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-        string fileName = $"{SanitizeFileName(currentPlayer.playerName)}_{timestamp}.save";
-        string path = Path.Combine(Application.persistentDataPath, "SaveGames", fileName);
-        
-        // Add character info to save data
-        saveData.playerName = currentPlayer.playerName;
-        saveData.characterIndex = currentPlayer.selectedCharacterIndex;
-        saveData.characterCardName = currentPlayer.characterCardName;
-        
-        // Create directory if it doesn't exist
-        Directory.CreateDirectory(Path.GetDirectoryName(path));
-        
-        string json = JsonUtility.ToJson(saveData, true);
-        File.WriteAllText(path, json);
-        
-        Debug.Log($"Game saved: {fileName}");
+        Debug.Log($"Game overwritten: {fileName} (Updated: {saveData.saveDate})");
+    }
+    else
+    {
+        Debug.Log($"Game saved: {fileName} (Created: {saveData.saveDate})");
+    }
+}
+
+// Also add this helper method to get existing save for a character
+public GameSaveData GetExistingSaveForCharacter(string playerName, int characterIndex)
+{
+    string baseFileName = $"{SanitizeFileName(playerName)}_Char{characterIndex}";
+    string fileName = $"{baseFileName}.save";
+    string path = Path.Combine(Application.persistentDataPath, "SaveGames", fileName);
+    
+    if (File.Exists(path))
+    {
+        try
+        {
+            string json = File.ReadAllText(path);
+            GameSaveData saveData = JsonUtility.FromJson<GameSaveData>(json);
+            saveData.saveFilePath = path;
+            return saveData;
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Failed to load existing save file {path}: {e.Message}");
+        }
     }
     
-    public List<GameSaveData> GetAllSaveGames()
+    return null;
+}
+
+// Modified GetAllSaveGames method to handle the new naming convention
+public List<GameSaveData> GetAllSaveGames()
+{
+    List<GameSaveData> saveGames = new List<GameSaveData>();
+    string savePath = Path.Combine(Application.persistentDataPath, "SaveGames");
+    
+    if (Directory.Exists(savePath))
     {
-        List<GameSaveData> saveGames = new List<GameSaveData>();
-        string savePath = Path.Combine(Application.persistentDataPath, "SaveGames");
+        string[] saveFiles = Directory.GetFiles(savePath, "*.save");
         
-        if (Directory.Exists(savePath))
+        foreach (string file in saveFiles)
         {
-            string[] saveFiles = Directory.GetFiles(savePath, "*.save");
-            
-            foreach (string file in saveFiles)
+            try
             {
-                try
-                {
-                    string json = File.ReadAllText(file);
-                    GameSaveData saveData = JsonUtility.FromJson<GameSaveData>(json);
-                    saveData.saveFilePath = file; // Store file path for loading
-                    saveGames.Add(saveData);
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogError($"Failed to load save file {file}: {e.Message}");
-                }
+                string json = File.ReadAllText(file);
+                GameSaveData saveData = JsonUtility.FromJson<GameSaveData>(json);
+                saveData.saveFilePath = file; // Store file path for loading
+                saveGames.Add(saveData);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Failed to load save file {file}: {e.Message}");
             }
         }
-        
-        // Sort by save date (newest first)
-        saveGames.Sort((a, b) => b.saveDate.CompareTo(a.saveDate));
-        return saveGames;
     }
+    
+    // Sort by save date (newest first)
+    saveGames.Sort((a, b) => b.saveDate.CompareTo(a.saveDate));
+    return saveGames;
+}
     
     public void LoadGameData(string saveFilePath)
     {

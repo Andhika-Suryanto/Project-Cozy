@@ -260,31 +260,166 @@ public class LoadGameManager : MonoBehaviour
             return;
         }
         
-        // Load the save file
+        Debug.Log($"Loading save from slot {slotIndex + 1}: {saveToLoad.playerName}");
+        
+        // Update GameSaveManager with character data from save
         if (GameSaveManager.Instance != null)
         {
-            GameSaveManager.Instance.LoadGameData(saveToLoad.saveFilePath);
+            // Create a temporary player profile from save data
+            PlayerProfile tempProfile = new PlayerProfile
+            {
+                playerName = saveToLoad.playerName,
+                selectedCharacterIndex = saveToLoad.characterIndex,
+                characterCardName = saveToLoad.characterCardName
+            };
+            
+            // Update current player in GameSaveManager
+            GameSaveManager.Instance.currentPlayer = tempProfile;
+            
+            // Save this data to PlayerPrefs so it persists through scene loading
+            PlayerPrefs.SetString("LoadingPlayerName", saveToLoad.playerName);
+            PlayerPrefs.SetInt("LoadingCharacterIndex", saveToLoad.characterIndex);
+            PlayerPrefs.SetString("LoadingCharacterCard", saveToLoad.characterCardName);
+            PlayerPrefs.Save();
+            
+            Debug.Log($"Updated GameSaveManager with character: {tempProfile.playerName} ({tempProfile.characterCardName})");
+            
+            // Load the save file data
+            if (!string.IsNullOrEmpty(saveToLoad.saveFilePath))
+            {
+                GameSaveManager.Instance.LoadGameData(saveToLoad.saveFilePath);
+                Debug.Log($"Loaded game data from: {saveToLoad.saveFilePath}");
+            }
         }
         
         // Load the appropriate scene based on save data
         LoadGameScene(saveToLoad);
-        
-        Debug.Log($"Loading save from slot {slotIndex + 1}: {saveToLoad.playerName}");
     }
     
     void LoadGameScene(GameSaveData saveData)
     {
-        // Load the scene where the save was created
-        string sceneToLoad = "GameWorld"; // Default scene
+        string sceneToLoad = null;
+        int sceneIndexToLoad = -1;
         
-        // Check if save data has scene info
-        if (saveData is OpenWorldSaveData worldSave && !string.IsNullOrEmpty(worldSave.currentSceneName))
+        Debug.Log($"[LOAD SCENE] Starting scene determination for {saveData.playerName}");
+        
+        // First priority: Check if it's OpenWorldSaveData with scene info
+        if (saveData is OpenWorldSaveData worldSave)
         {
-            sceneToLoad = worldSave.currentSceneName;
+            Debug.Log($"[LOAD SCENE] Found OpenWorldSaveData");
+            
+            // Use scene name if available and valid
+            if (!string.IsNullOrEmpty(worldSave.currentSceneName))
+            {
+                sceneToLoad = worldSave.currentSceneName;
+                Debug.Log($"[LOAD SCENE] Found scene name in save: {sceneToLoad}");
+            }
+            
+            // Fallback to scene index if name is invalid
+            if (string.IsNullOrEmpty(sceneToLoad) && worldSave.currentSceneIndex >= 0)
+            {
+                sceneIndexToLoad = worldSave.currentSceneIndex;
+                Debug.Log($"[LOAD SCENE] Using scene index from save: {sceneIndexToLoad}");
+            }
         }
         
-        // Load the scene
-        SceneManager.LoadScene(sceneToLoad);
+        // Second priority: Check base GameSaveData for track/level info
+        if (string.IsNullOrEmpty(sceneToLoad) && sceneIndexToLoad < 0)
+        {
+            if (!string.IsNullOrEmpty(saveData.currentTrack))
+            {
+                sceneToLoad = saveData.currentTrack;
+                Debug.Log($"[LOAD SCENE] Using currentTrack from base save data: {sceneToLoad}");
+            }
+        }
+        
+        // Third priority: Try to determine scene from character creation data
+        if (string.IsNullOrEmpty(sceneToLoad) && sceneIndexToLoad < 0)
+        {
+            if (GameSaveManager.Instance != null)
+            {
+                PlayerProfile player = GameSaveManager.Instance.GetCurrentPlayer();
+                // You could add logic here to determine scene based on character type
+                // For example: different starting areas for different character types
+                Debug.Log($"[LOAD SCENE] Character type: {player.characterCardName} - no specific scene mapping");
+            }
+        }
+        
+        // Fourth priority: Check PlayerPrefs for selected map
+        if (string.IsNullOrEmpty(sceneToLoad) && sceneIndexToLoad < 0)
+        {
+            if (PlayerPrefs.HasKey("SelectedMapSceneName"))
+            {
+                sceneToLoad = PlayerPrefs.GetString("SelectedMapSceneName");
+                Debug.Log($"[LOAD SCENE] Using selected map scene: {sceneToLoad}");
+            }
+        }
+        
+        // Final fallback: Use default scenes
+        if (string.IsNullOrEmpty(sceneToLoad) && sceneIndexToLoad < 0)
+        {
+            // Try common open world scene names first
+            string[] commonSceneNames = { "OpenWorld", "GameWorld", "MainWorld", "World", "Game", "GameScene" };
+            
+            foreach (string sceneName in commonSceneNames)
+            {
+                if (IsSceneInBuildSettings(sceneName))
+                {
+                    sceneToLoad = sceneName;
+                    Debug.Log($"[LOAD SCENE] Using fallback scene: {sceneToLoad}");
+                    break;
+                }
+            }
+            
+            // If still no scene found, use build index 1 (assuming 0 is main menu)
+            if (string.IsNullOrEmpty(sceneToLoad))
+            {
+                sceneIndexToLoad = 1;
+                Debug.LogWarning($"[LOAD SCENE] No valid scene found, using build index: {sceneIndexToLoad}");
+            }
+        }
+        
+        // Load the determined scene
+        try
+        {
+            if (!string.IsNullOrEmpty(sceneToLoad))
+            {
+                Debug.Log($"[LOAD SCENE] Loading scene by name: {sceneToLoad}");
+                SceneManager.LoadScene(sceneToLoad);
+            }
+            else if (sceneIndexToLoad >= 0)
+            {
+                Debug.Log($"[LOAD SCENE] Loading scene by index: {sceneIndexToLoad}");
+                SceneManager.LoadScene(sceneIndexToLoad);
+            }
+            else
+            {
+                Debug.LogError("[LOAD SCENE] No valid scene to load! Loading scene index 1 as emergency fallback.");
+                SceneManager.LoadScene(1);
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[LOAD SCENE] Failed to load scene '{sceneToLoad}' (index: {sceneIndexToLoad}): {e.Message}");
+            Debug.LogError("[LOAD SCENE] Loading scene index 1 as emergency fallback.");
+            SceneManager.LoadScene(1);
+        }
+    }
+    
+    // Helper method to check if scene exists in build settings
+    bool IsSceneInBuildSettings(string sceneName)
+    {
+        for (int i = 0; i < SceneManager.sceneCountInBuildSettings; i++)
+        {
+            string scenePath = SceneUtility.GetScenePathByBuildIndex(i);
+            string sceneNameFromPath = System.IO.Path.GetFileNameWithoutExtension(scenePath);
+            
+            if (sceneNameFromPath.Equals(sceneName, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
     }
     
     void BackToMainMenu()
@@ -390,8 +525,40 @@ public class SimpleLoadGameManager : MonoBehaviour
     {
         if (slotSaveData[slotIndex] != null)
         {
-            GameSaveManager.Instance.LoadGameData(slotSaveData[slotIndex].saveFilePath);
-            SceneManager.LoadScene("GameWorld");
+            // Update GameSaveManager with character data from save
+            if (GameSaveManager.Instance != null)
+            {
+                GameSaveData saveToLoad = slotSaveData[slotIndex];
+                
+                // Create a temporary player profile from save data
+                PlayerProfile tempProfile = new PlayerProfile
+                {
+                    playerName = saveToLoad.playerName,
+                    selectedCharacterIndex = saveToLoad.characterIndex,
+                    characterCardName = saveToLoad.characterCardName
+                };
+                
+                // Update current player in GameSaveManager
+                GameSaveManager.Instance.currentPlayer = tempProfile;
+                
+                // Save this data to PlayerPrefs so it persists through scene loading
+                PlayerPrefs.SetString("LoadingPlayerName", saveToLoad.playerName);
+                PlayerPrefs.SetInt("LoadingCharacterIndex", saveToLoad.characterIndex);
+                PlayerPrefs.SetString("LoadingCharacterCard", saveToLoad.characterCardName);
+                PlayerPrefs.Save();
+                
+                GameSaveManager.Instance.LoadGameData(saveToLoad.saveFilePath);
+            }
+            
+            // Determine scene to load
+            string sceneToLoad = "GameWorld"; // Default fallback
+            
+            if (slotSaveData[slotIndex] is OpenWorldSaveData worldSave && !string.IsNullOrEmpty(worldSave.currentSceneName))
+            {
+                sceneToLoad = worldSave.currentSceneName;
+            }
+            
+            SceneManager.LoadScene(sceneToLoad);
         }
     }
 }

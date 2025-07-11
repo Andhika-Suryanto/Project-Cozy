@@ -19,6 +19,10 @@ public class OpenWorldSaveManager : MonoBehaviour
     public TMPro.TextMeshProUGUI saveStatusText; // "Game Saved!" feedback
     public KeyCode saveHotkey = KeyCode.F5;    // Quick save key
     
+    [Header("Loading Settings")]
+    public float loadDelay = 1f;               // Delay before loading save data
+    public bool waitForCarInitialization = true; // Wait for car to be fully initialized
+    
     [Header("Open World State")]
     public string currentZone = "Downtown";    // Current area/district
     public int playerLevel = 1;
@@ -28,9 +32,14 @@ public class OpenWorldSaveManager : MonoBehaviour
     
     private bool isInRace = false;
     private OpenWorldSaveData currentSave;
+    private bool hasLoadedSaveData = false;
+    private Camera originalCamera;
     
     void Start()
     {
+        // Store original camera reference
+        originalCamera = Camera.main;
+        
         // Setup save/load buttons
         if (saveGameButton != null)
             saveGameButton.onClick.AddListener(ManualSaveGame);
@@ -44,7 +53,26 @@ public class OpenWorldSaveManager : MonoBehaviour
             AutoDetectPlayerCar();
         }
         
-        // Auto-load existing progress
+        // Delay the auto-load to let everything initialize first
+        if (waitForCarInitialization)
+        {
+            Invoke(nameof(DelayedAutoLoad), loadDelay);
+        }
+        else
+        {
+            AutoLoadOpenWorldProgress();
+        }
+    }
+    
+    void DelayedAutoLoad()
+    {
+        // Re-detect car in case it wasn't ready in Start()
+        if (playerCar == null)
+        {
+            AutoDetectPlayerCar();
+        }
+        
+        // Now auto-load
         AutoLoadOpenWorldProgress();
     }
     
@@ -55,36 +83,63 @@ public class OpenWorldSaveManager : MonoBehaviour
         {
             ManualSaveGame();
         }
+        
+        // Re-detect car if it's missing (in case it gets spawned later)
+        if (playerCar == null && Time.time > 2f) // Wait 2 seconds before trying again
+        {
+            AutoDetectPlayerCar();
+        }
     }
     
     void AutoDetectPlayerCar()
     {
-        // Find car with player tag
+        Debug.Log("[CAR DETECT] Starting car detection...");
+        
+        // Method 1: Find car with player tag
         GameObject carWithPlayerTag = GameObject.FindGameObjectWithTag("Player");
         if (carWithPlayerTag != null)
         {
-            MonoBehaviour carController = carWithPlayerTag.GetComponent<MonoBehaviour>();
-            if (carController != null && carController.GetType().Name.Contains("RCC"))
+            Debug.Log($"[CAR DETECT] Found GameObject with Player tag: {carWithPlayerTag.name}");
+            
+            // Check if it has RCC component
+            MonoBehaviour[] components = carWithPlayerTag.GetComponents<MonoBehaviour>();
+            foreach (var component in components)
             {
-                playerCar = carController;
-                Debug.Log($"Auto-detected player car: {playerCar.name}");
-                return;
+                if (component.GetType().Name.Contains("RCC"))
+                {
+                    playerCar = component;
+                    Debug.Log($"[CAR DETECT] ✓ Auto-detected player car: {playerCar.name} (Component: {component.GetType().Name})");
+                    return;
+                }
+            }
+            
+            // If no RCC component on the tagged object, check children
+            MonoBehaviour[] childComponents = carWithPlayerTag.GetComponentsInChildren<MonoBehaviour>();
+            foreach (var component in childComponents)
+            {
+                if (component.GetType().Name.Contains("RCC"))
+                {
+                    playerCar = component;
+                    Debug.Log($"[CAR DETECT] ✓ Auto-detected player car in children: {playerCar.name} (Component: {component.GetType().Name})");
+                    return;
+                }
             }
         }
         
-        // Fallback: Find any RCC car in scene
+        // Method 2: Find any RCC car in scene
+        Debug.Log("[CAR DETECT] No Player-tagged car found, searching for any RCC car...");
         MonoBehaviour[] allComponents = FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
         foreach (var component in allComponents)
         {
             if (component.GetType().Name.Contains("RCC_CarController"))
             {
                 playerCar = component;
-                Debug.Log($"Auto-assigned RCC car found: {playerCar.name}");
+                Debug.Log($"[CAR DETECT] ✓ Auto-assigned RCC car found: {playerCar.name} (Component: {component.GetType().Name})");
                 return;
             }
         }
         
-        Debug.LogWarning("No RCC car found in scene! Please assign manually or ensure car is spawned.");
+        Debug.LogWarning("[CAR DETECT] No RCC car found in scene! Please assign manually or ensure car is spawned.");
     }
     
     #region Race State Management
@@ -113,8 +168,17 @@ public class OpenWorldSaveManager : MonoBehaviour
     
     void AutoSaveAfterRace()
     {
+        bool wasOverwrite = CheckIfSaveExists();
         SaveOpenWorldState();
-        ShowSaveMessage("Progress Auto-Saved After Race!");
+        
+        if (wasOverwrite)
+        {
+            ShowSaveMessage("Progress Auto-Saved (Overwritten)!");
+        }
+        else
+        {
+            ShowSaveMessage("Progress Auto-Saved!");
+        }
     }
     #endregion
     
@@ -129,9 +193,80 @@ public class OpenWorldSaveManager : MonoBehaviour
         }
         
         Debug.Log("[SAVE] Starting manual save...");
+        
+        // Check if save already exists for this character
+        bool willOverwrite = CheckIfSaveExists();
+        
         SaveOpenWorldState();
-        ShowSaveMessage($"Game Saved! ({saveHotkey} to quick save)");
-        Debug.Log("[SAVE] Manual save completed successfully!");
+        
+        if (willOverwrite)
+        {
+            ShowSaveMessage($"Game Overwritten! ({saveHotkey} to quick save)");
+            Debug.Log("[SAVE] Existing save overwritten successfully!");
+        }
+        else
+        {
+            ShowSaveMessage($"Game Saved! ({saveHotkey} to quick save)");
+            Debug.Log("[SAVE] New save created successfully!");
+        }
+    }
+    
+    private bool CheckIfSaveExists()
+    {
+        if (GameSaveManager.Instance != null && GameSaveManager.Instance.HasValidPlayer())
+        {
+            PlayerProfile player = GameSaveManager.Instance.GetCurrentPlayer();
+            OpenWorldSaveData existingSave = LoadExistingSaveForCharacter(player.playerName, player.selectedCharacterIndex);
+            return existingSave != null;
+        }
+        return false;
+    }
+    
+    // Direct method to load OpenWorldSaveData for a specific character
+    private OpenWorldSaveData LoadExistingSaveForCharacter(string playerName, int characterIndex)
+    {
+        if (GameSaveManager.Instance == null) return null;
+        
+        string baseFileName = $"{SanitizeFileName(playerName)}_Char{characterIndex}";
+        string fileName = $"{baseFileName}.save";
+        string path = System.IO.Path.Combine(Application.persistentDataPath, "SaveGames", fileName);
+        
+        if (System.IO.File.Exists(path))
+        {
+            try
+            {
+                string json = System.IO.File.ReadAllText(path);
+                Debug.Log($"[LOAD CHECK] Found save file: {fileName}");
+                
+                // Try to deserialize as OpenWorldSaveData
+                OpenWorldSaveData saveData = JsonUtility.FromJson<OpenWorldSaveData>(json);
+                saveData.saveFilePath = path;
+                
+                Debug.Log($"[LOAD CHECK] Successfully parsed OpenWorldSaveData for {saveData.playerName}");
+                return saveData;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[LOAD CHECK] Failed to load save file {path}: {e.Message}");
+            }
+        }
+        else
+        {
+            Debug.Log($"[LOAD CHECK] No save file found at: {path}");
+        }
+        
+        return null;
+    }
+    
+    private string SanitizeFileName(string fileName)
+    {
+        // Remove invalid file name characters
+        string invalid = new string(System.IO.Path.GetInvalidFileNameChars()) + new string(System.IO.Path.GetInvalidPathChars());
+        foreach (char c in invalid)
+        {
+            fileName = fileName.Replace(c.ToString(), "");
+        }
+        return fileName.Trim();
     }
     
     public void ManualLoadGame()
@@ -162,6 +297,8 @@ public class OpenWorldSaveManager : MonoBehaviour
         }
         
         Debug.Log($"[SAVE] Player car found: {playerCar.name}");
+        Debug.Log($"[SAVE] Current car position: {playerCar.transform.position}");
+        Debug.Log($"[SAVE] Current car rotation: {playerCar.transform.rotation.eulerAngles}");
         
         // Create save data
         OpenWorldSaveData saveData = new OpenWorldSaveData();
@@ -262,17 +399,6 @@ public class OpenWorldSaveManager : MonoBehaviour
         {
             var carType = playerCar.GetType();
             Debug.Log($"[SAVE CAR] Car type: {carType.Name}");
-            
-            // Debug: List all fields in the car component
-            var allFields = carType.GetFields();
-            Debug.Log($"[SAVE CAR] Available fields in {carType.Name}:");
-            foreach (var field in allFields)
-            {
-                if (field.FieldType == typeof(float) || field.FieldType == typeof(int))
-                {
-                    Debug.Log($"[SAVE CAR]   - {field.Name} ({field.FieldType.Name})");
-                }
-            }
             
             // Get max speed
             var maxspeedField = carType.GetField("maxspeed") ?? carType.GetField("maxSpeed") ?? carType.GetField("topSpeed");
@@ -381,38 +507,37 @@ public class OpenWorldSaveManager : MonoBehaviour
     {
         Debug.Log("[LOAD] ======== STARTING LOAD PROCESS ========");
         
+        // Don't load if we already loaded save data this session
+        if (hasLoadedSaveData)
+        {
+            Debug.Log("[LOAD] Save data already loaded this session, skipping...");
+            return;
+        }
+        
         OpenWorldSaveData saveData = null;
         
-        // Try to load from GameSaveManager first
-        if (GameSaveManager.Instance != null)
+        // Try to load directly using the fixed method
+        if (GameSaveManager.Instance != null && GameSaveManager.Instance.HasValidPlayer())
         {
-            Debug.Log("[LOAD] GameSaveManager found - searching for save files...");
-            var allSaves = GameSaveManager.Instance.GetAllSaveGames();
             PlayerProfile currentPlayer = GameSaveManager.Instance.GetCurrentPlayer();
             
-            Debug.Log($"[LOAD] Found {allSaves.Count} total save files");
-            Debug.Log($"[LOAD] Looking for saves for: {currentPlayer.playerName} (Character {currentPlayer.selectedCharacterIndex})");
+            Debug.Log($"[LOAD] Looking for save for: {currentPlayer.playerName} (Character {currentPlayer.selectedCharacterIndex})");
             
-            foreach (var save in allSaves)
+            // Use our direct loading method instead of going through GetAllSaveGames
+            saveData = LoadExistingSaveForCharacter(currentPlayer.playerName, currentPlayer.selectedCharacterIndex);
+            
+            if (saveData != null)
             {
-                Debug.Log($"[LOAD] Checking save: {save.playerName} (Character {save.characterIndex})");
-                if (save.playerName == currentPlayer.playerName && 
-                    save.characterIndex == currentPlayer.selectedCharacterIndex)
-                {
-                    saveData = save as OpenWorldSaveData;
-                    Debug.Log($"[LOAD] ✓ Found matching save file!");
-                    break;
-                }
+                Debug.Log($"[LOAD] ✓ Found matching save file for {saveData.playerName}!");
             }
-            
-            if (saveData == null)
+            else
             {
-                Debug.LogWarning("[LOAD] No matching save file found for current character");
+                Debug.Log("[LOAD] No save file found for current character - this is normal for new characters");
             }
         }
         else
         {
-            Debug.LogWarning("[LOAD] GameSaveManager not found - trying PlayerPrefs fallback");
+            Debug.LogWarning("[LOAD] GameSaveManager not found or no valid player");
         }
         
         // Fallback: Load from PlayerPrefs
@@ -435,19 +560,29 @@ public class OpenWorldSaveManager : MonoBehaviour
         {
             Debug.Log("[LOAD] Applying loaded save data...");
             ApplyOpenWorldState(saveData);
+            hasLoadedSaveData = true; // Mark as loaded
             Debug.Log("[LOAD] ======== LOAD COMPLETED SUCCESSFULLY ========");
         }
         else
         {
             Debug.Log("[LOAD] No save data found - setting up new game");
             SetDefaultStartingPosition();
+            hasLoadedSaveData = true; // Mark as processed
             Debug.Log("[LOAD] ======== NEW GAME SETUP COMPLETED ========");
         }
     }
     
     void ApplyOpenWorldState(OpenWorldSaveData saveData)
     {
-        if (playerCar == null) return;
+        if (playerCar == null) 
+        {
+            Debug.LogWarning("[LOAD] Cannot apply save data - no player car found!");
+            return;
+        }
+        
+        Debug.Log($"[LOAD] Applying save data...");
+        Debug.Log($"[LOAD] Car position before load: {playerCar.transform.position}");
+        Debug.Log($"[LOAD] Save data position: {saveData.playerPosition}");
         
         // Check if we need to load a different scene
         string currentScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
@@ -456,17 +591,17 @@ public class OpenWorldSaveManager : MonoBehaviour
             Debug.Log($"Player was in different scene '{saveData.currentSceneName}', current scene is '{currentScene}'");
         }
         
-        // Restore position exactly where saved
-        playerCar.transform.position = saveData.playerPosition;
-        playerCar.transform.rotation = saveData.playerRotation;
-        
-        // Stop car movement to prevent physics issues
+        // Stop car movement BEFORE moving it
         Rigidbody carRigid = playerCar.GetComponent<Rigidbody>();
         if (carRigid != null)
         {
             carRigid.linearVelocity = Vector3.zero;
             carRigid.angularVelocity = Vector3.zero;
+            carRigid.Sleep(); // Force rigidbody to sleep
         }
+        
+        // Wait a frame then restore position
+        StartCoroutine(RestoreCarPosition(saveData));
         
         // Restore zone
         currentZone = saveData.currentZone;
@@ -480,8 +615,34 @@ public class OpenWorldSaveManager : MonoBehaviour
         totalRacesWon = saveData.totalRacesWon;
         totalRacesCompleted = saveData.totalRacesCompleted;
         
-        Debug.Log($"Loaded open world state: Scene '{saveData.currentSceneName}', Zone '{saveData.currentZone}' at {saveData.playerPosition}");
-        Debug.Log($"Player stats: Level {playerLevel}, Money ${totalMoney}, Races won {totalRacesWon}/{totalRacesCompleted}");
+        Debug.Log($"[LOAD] Loaded open world state: Scene '{saveData.currentSceneName}', Zone '{saveData.currentZone}'");
+        Debug.Log($"[LOAD] Player stats: Level {playerLevel}, Money ${totalMoney}, Races won {totalRacesWon}/{totalRacesCompleted}");
+    }
+    
+    System.Collections.IEnumerator RestoreCarPosition(OpenWorldSaveData saveData)
+    {
+        // Wait a few frames to ensure everything is initialized
+        yield return new WaitForFixedUpdate();
+        yield return new WaitForFixedUpdate();
+        
+        if (playerCar != null)
+        {
+            Debug.Log($"[LOAD] Restoring car position to: {saveData.playerPosition}");
+            
+            // Restore position exactly where saved
+            playerCar.transform.position = saveData.playerPosition;
+            playerCar.transform.rotation = saveData.playerRotation;
+            
+            // Stop car movement again after positioning
+            Rigidbody carRigid = playerCar.GetComponent<Rigidbody>();
+            if (carRigid != null)
+            {
+                carRigid.linearVelocity = Vector3.zero;
+                carRigid.angularVelocity = Vector3.zero;
+            }
+            
+            Debug.Log($"[LOAD] Car position after restore: {playerCar.transform.position}");
+        }
     }
     
     void LoadCarModifications(OpenWorldSaveData saveData)
@@ -534,15 +695,7 @@ public class OpenWorldSaveManager : MonoBehaviour
             }
         }
         
-        // Stop car movement to prevent physics issues
-        Rigidbody carRigid = playerCar.GetComponent<Rigidbody>();
-        if (carRigid != null)
-        {
-            carRigid.linearVelocity = Vector3.zero;
-            carRigid.angularVelocity = Vector3.zero;
-        }
-        
-        Debug.Log($"Loaded car modifications");
+        Debug.Log($"[LOAD] Loaded car modifications");
     }
     
     void SetDefaultStartingPosition()
@@ -550,11 +703,15 @@ public class OpenWorldSaveManager : MonoBehaviour
         // Set default starting position for new players
         if (playerCar != null)
         {
-            playerCar.transform.position = Vector3.zero + Vector3.up * 2f;
+            Vector3 defaultPos = Vector3.zero + Vector3.up * 2f;
+            playerCar.transform.position = defaultPos;
             playerCar.transform.rotation = Quaternion.identity;
+            Debug.Log($"[LOAD] Set default starting position: {defaultPos}");
         }
-        
-        Debug.Log("Set default starting position for new game");
+        else
+        {
+            Debug.LogWarning("[LOAD] Cannot set default position - no player car found");
+        }
     }
     #endregion
     
@@ -602,8 +759,19 @@ public class OpenWorldSaveManager : MonoBehaviour
         if (saveStatusText != null)
         {
             saveStatusText.text = message;
-            Invoke(nameof(ClearSaveMessage), 3f);
+            
+            // Different display times based on message type
+            if (message.Contains("Overwritten"))
+            {
+                Invoke(nameof(ClearSaveMessage), 4f); // Show overwrite message longer
+            }
+            else
+            {
+                Invoke(nameof(ClearSaveMessage), 3f);
+            }
         }
+        
+        Debug.Log($"[SAVE MESSAGE] {message}");
     }
     
     void ClearSaveMessage()
@@ -665,6 +833,21 @@ public class OpenWorldSaveManager : MonoBehaviour
         }
         return false;
     }
+    
+    // Public method to force reload save data (useful for testing)
+    [ContextMenu("Force Reload Save Data")]
+    public void ForceReloadSaveData()
+    {
+        hasLoadedSaveData = false;
+        LoadOpenWorldState();
+    }
+    
+    // Public method to reset car position to default
+    [ContextMenu("Reset Car to Default Position")]
+    public void ResetCarToDefault()
+    {
+        SetDefaultStartingPosition();
+    }
     #endregion
     
     #region Public Accessors
@@ -674,6 +857,7 @@ public class OpenWorldSaveManager : MonoBehaviour
     public int GetRacesWon() => totalRacesWon;
     public string GetCurrentZone() => currentZone;
     public string GetCurrentCarModel() => playerCar?.name ?? "Unknown";
+    public bool HasLoadedSaveData => hasLoadedSaveData;
     #endregion
 }
 
