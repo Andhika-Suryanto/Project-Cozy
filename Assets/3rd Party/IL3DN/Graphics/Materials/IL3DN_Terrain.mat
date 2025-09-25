@@ -130,7 +130,7 @@ Material:
     - _UVSec: 0
     - _WindQuality: 0
     - _ZWrite: 1
-    - __dirty: 0
+    - __dirty: 1
     m_Colors:
     - _Color: {r: 0, g: 0, b: 0, a: 0}
     - _Color0: {r: 0.13652545, g: 0.49056602, b: 0.22867079, a: 1}
